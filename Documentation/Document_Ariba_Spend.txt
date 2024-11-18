@@ -1,0 +1,99 @@
+Flow
+=====
+
+Step 2:
+3 Matl Groups --> Use it as it is to Fixed Material Number
+
+
+For the ones with Vendor Material Number is NOT NULL 
+
+Step 3A:
+Not covered in Step-2 / Use the query --> check for Vendor Mat# to Mat# Mapping (Join without Plant and then with Plant) 
+
+Step 3B: 
+check for Vendor Mat CLEANED**# to Mat# Mapping (Join without Plant and then with Plant) 
+
+
+
+Step 4:
+Check for Vendor Mat Number  with your Inventorised Opex
+
+1) Vendor Material Number with exact 1 mapping existing which has FINAL_MATERIAL_NO / No splitting etc
+2) Vendor Material Number with more than 1 mapping existing : 
+	Look for the material# whose transaction / line item is minimum ( np.nanmin & Postive Quantity) / 
+	Outcome : Update the Fixed Material Number with "FINAL_MATERIAL_NO" info.
+	
+
+[Optional]
+Step 5:
+Check for Vendor Mat Number Cleaned**  with your Inventorised Opex
+
+1) Vendor Material Number with exact 1 mapping existing which has FINAL_MATERIAL_NO / No splitting etc
+2) Vendor Material Number with more than 1 mapping existing : 
+	Look for the material# whose transaction / line item is minimum ( np.nanmin & Postive Quantity) / 
+	Outcome : Update the Fixed Material Number with "FINAL_MATERIAL_NO" info.
+
+Step 6 :
+Draw the similarity measure between Ariba transactions (remaining out of Step-5) with the Inventorised PO similarity
+
+1. Highest Similarity
+2. Minimum PO Rate
+3. Highest Material Number
+
+Step 7:
+
+RULES
+======
+-- For all English Characters with lower case
+
+-- Ariba: 
+-- Service Contract : 
+    -- Final Text :
+    -- Prefer NAME first / wherever NAME = 'nan' Take PO_TEXT
+-- Non Service Contract : 
+    -- Final Text :
+    -- Prefer PO_TEXT / Name 
+
+-- Inventorised
+    -- Final Text : 
+        -- DESCRIPTION / PO_TEXT / NAME
+
+
+
+QUERY 
+====
+
+SELECT  VENDOR_MATERIAL_NUMBER,MATERIAL_NUMBER,PLANT, FROM (
+       SELECT A.*,B.* FROM ( SELECT * FROM ( SELECT DISTINCT
+            RECORD_DATE,
+            MATERIAL_NUMBER,
+            PURCHASING_INFO_RECORD_NUMBER,
+            PURCHASING_INFO_RECORD_CATEGORY,
+            PURCHASING_ORGANIZATION,
+            PLANT,
+            max(RECORD_DATE) over (partition by MATERIAL_NUMBER, PURCHASING_INFO_RECORD_NUMBER, PURCHASING_INFO_RECORD_CATEGORY, PURCHASING_ORGANIZATION
+            order by MATERIAL_NUMBER, PURCHASING_INFO_RECORD_NUMBER, PURCHASING_INFO_RECORD_CATEGORY, PURCHASING_ORGANIZATION) as max_record_date
+        FROM  
+            "PROD_BDW_EA_E_PROCUREMENT"."MD"."V_D_MATERIAL_PRICING"
+        WHERE
+            RECORD_DATE >= '2022-01-01')first
+    WHERE
+        max_record_date = RECORD_DATE) A 
+LEFT JOIN
+    (
+    SELECT DISTINCT
+    PURCHASING_INFO_RECORD_NUMBER,
+    PURCHASING_INFO_RECORD_CATEGORY,
+    PURCHASING_ORGANIZATION,
+    VENDOR_MATERIAL_NUMBER
+    FROM
+        "PROD_BDW_EA_C_PUR_MASTER_DATA"."MD"."V_D_PURCHASING_INFO_RECORD"
+    WHERE
+        VENDOR_MATERIAL_NUMBER != ''
+        AND VENDOR_MATERIAL_NUMBER IS NOT NULL
+        AND PRICE_VALID_TO_DATE >= CURRENT_DATE) B
+ON
+    A."PURCHASING_INFO_RECORD_NUMBER" = B."PURCHASING_INFO_RECORD_NUMBER" AND
+    A."PURCHASING_INFO_RECORD_CATEGORY" = B."PURCHASING_INFO_RECORD_CATEGORY" AND
+    A."PURCHASING_ORGANIZATION" = B."PURCHASING_ORGANIZATION" )
+
